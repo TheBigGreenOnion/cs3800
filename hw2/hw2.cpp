@@ -7,22 +7,30 @@
 using namespace std;
 
 
-int pagefault(lookaside* main_lookaside, int access_id, int mem_size, char *algorithm, unsigned *timestamp, char *prepage, int* clk)
+int pagefault(lookaside* main_lookaside, int access_id, int mem_size, int page_size, char *algorithm, unsigned *timestamp, char *prepage, int* clk)
 {
     int replace = main_lookaside[0].timestamp;
     int k = *clk;
+    int mark;
     if (string(algorithm) == "clock") {
-        while (main_lookaside[k].clk == 1) {
-             
-            main_lookaside[k].clk = 0;
-            if (k = 255)
+        while (1) {
+            if (main_lookaside[k].clk == 1) {
+                main_lookaside[k].clk = 0;
+            }
+            else {
+                mark = k;
+                main_lookaside[k].clk = 1;
+                break;
+            }
+            if (k >= mem_size-1) {
                 k = 0;
-            else 
+            }
+            else { 
                 k++;
+            }
         }
-        replace = k;
-        main_lookaside[replace].clk = 1;
-        *clk = replace+1;
+        replace = mark;
+        //cout << "HELLO: PUTTING " << access_id << " in mem cell " << replace << endl;
     }
     else { //fifo/lru 
         replace = 0;
@@ -33,19 +41,25 @@ int pagefault(lookaside* main_lookaside, int access_id, int mem_size, char *algo
 
         main_lookaside[replace].timestamp = *timestamp;
     }
-
     main_lookaside[replace].mem_id = access_id;
-    if (prepage[0] == '1') {
-        *timestamp += 1;
-        replace += 1;
-        *clk += 1;
-        
-        if ((replace < mem_size)) {
-            main_lookaside[replace].mem_id = access_id + 1;
-            main_lookaside[replace].timestamp = *timestamp;
-            main_lookaside[replace].clk = 1;
+
+    if (prepage[0] == 'p') {
+        if (replace >= mem_size-1) {
+            replace = 0;
         }
+        else {
+            replace += 1;
+        }
+        main_lookaside[replace].mem_id = access_id + page_size;// + page_size;
+        main_lookaside[replace].timestamp = *timestamp;
+        main_lookaside[replace].clk = 1;
+        
     }
+    
+    if (replace < mem_size - 1)
+        *clk = replace + 1;
+    else 
+        *clk = 0;
     
     //either demand or prepaging
     return 0;
@@ -173,6 +187,14 @@ int main(int argc, char *argv[])
         main_lookaside[k].modify = 0;
         main_lookaside[k].clk = 0;
     }
+    for (int p=0;p<total_procs-1;p++) {
+        for (int o=0;o<mem_pages/(total_procs-1);o++) {
+            int key = p * (mem_pages/(total_procs-1)) + o;
+            main_lookaside[key].mem_id = lookup(ptables, p, o);
+            main_lookaside[key].timestamp = 1;
+            main_lookaside[key].clk = 1;
+        }
+    }
     
     int offset;
     int status; //0 = = good, other = fault
@@ -190,7 +212,7 @@ int main(int argc, char *argv[])
         status = check(main_lookaside, mem_pages, page_size, access_id, algorithm, &current_timestamp);
         if (status == -1) {
             pagefaults += 1;
-            pagefault(main_lookaside, access_id, mem_pages, algorithm, &current_timestamp, prepage, &clock_ptr); 
+            pagefault(main_lookaside, access_id, mem_pages, page_size, algorithm, &current_timestamp, prepage, &clock_ptr); 
         }
         current_timestamp ++;
     }
