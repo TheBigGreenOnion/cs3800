@@ -1,3 +1,6 @@
+// Robert Higgins
+// CS 3800
+
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -115,6 +118,12 @@ pagetable* gen_ptable(unsigned pid, unsigned mem_used, unsigned total_allocated,
     return temp;
 }
 
+void iamerror()
+{
+    cout << "One of the provided options was incorrect. Review them and try again" <<endl;
+    exit (0);
+}
+
 int main(int argc, char *argv[])
 {
     unsigned MEM_SZ = 512;
@@ -122,9 +131,7 @@ int main(int argc, char *argv[])
     unsigned current_timestamp = 1;
     
     if (argc > 6) {
-        //iamerror();
-        cout << "HOLY SHIT BRO" << endl;
-        return 0;
+        iamerror();
     }
 
     char* procs_fname = argv[1];
@@ -134,8 +141,32 @@ int main(int argc, char *argv[])
     char *prepage = argv[5];
     int mem_pages = MEM_SZ/page_size;    
 
+    int temp = page_size;
+    while (1) {
+        if (temp == 1) {
+            break;
+        }
+
+        if (temp % 2 != 0) {
+            cout << "TMP: " << temp <<endl;
+            cout.flush();
+            iamerror();
+        }
+
+        temp = temp / 2;
+    }
+    if (prepage[0] != 'd' && prepage[0] != 'p')
+        iamerror();
+
+
+    if (string(algorithm) != "clock" && string(algorithm) != "lru" && string(algorithm) != "fifo")
+        iamerror(); 
+
     std::ifstream procinfo (procs_fname, std::ifstream::in);
     std::ifstream procaccess (access_fname, std::ifstream::in);
+
+    if (!(procinfo.is_open() && procaccess.is_open()))
+        iamerror();
 
     int ** mem = NULL; 
     int ** old_mem = NULL;
@@ -146,11 +177,17 @@ int main(int argc, char *argv[])
     unsigned total_procs = 0;
     unsigned total_allocated = 0;
 
-    cout << "Page size: " << page_size <<endl
+    string method;
+    if (prepage[0] == 'p')
+        method = "Pre Paging";
+    else
+        method = "Demand Paging";
+    
+    cout << "/***********************************************" <<endl 
+        << "Page size: " << page_size <<endl
         << "Algorithm: " << algorithm << endl
-        << "Paging Policy: "<< prepage << endl;
+        << "Paging Policy: "<< method << endl;
 
-    cout << (string(algorithm) == "lru" ) << endl;
     while (!procinfo.eof()) {
         //cout << total_procs << endl;
         procinfo >> pid;
@@ -181,12 +218,14 @@ int main(int argc, char *argv[])
     }
     
     lookaside* main_lookaside = new lookaside[mem_pages];
+    // Load safe values just in case
     for (int k=0;k<mem_pages;k++) {
         main_lookaside[k].mem_id = 0;
         main_lookaside[k].timestamp = 0;
         main_lookaside[k].modify = 0;
         main_lookaside[k].clk = 0;
     }
+    // Load initial memory with equal parts of each process
     for (int p=0;p<total_procs-1;p++) {
         for (int o=0;o<mem_pages/(total_procs-1);o++) {
             int key = p * (mem_pages/(total_procs-1)) + o;
