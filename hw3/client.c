@@ -8,7 +8,7 @@
 /*   gcc -o client client.c -lpthread -D_REENTRANT                                */
 /*                                                                                                              */
 /*********************************************************************************/
-
+/*
 
 int main()
 {
@@ -32,16 +32,7 @@ int main()
 
 
 
-
-void* reader(void* arg)
-{
-    get FD
-    while (read(FD) > 0)
-    {
-       print to screen what is read
-    }
-    close(FD)
-}
+*/
  
 /************************************************************************/ 
 /*   PROGRAM NAME: client.c  (works with serverX.c)                     */ 
@@ -60,6 +51,7 @@ void* reader(void* arg)
 /************************************************************************/ 
  
 #include <stdio.h> 
+#include <stdlib.h>
 #include <sys/types.h> 
 #include <sys/socket.h> 
 #include <netinet/in.h> 
@@ -69,7 +61,22 @@ void* reader(void* arg)
 #define SERVER_PORT 9999 
 
 
-struct reader_args
+struct args reader_args = {
+    int sd,
+    char* buf,
+    pthread_mutex_t buf_mutex
+};
+
+void* reader(void* arg)
+{
+    /*get FD
+    while (read(sd, buf, sizeof(buf)) > 0)
+    {
+        printf("%s\n", buf);  
+    }
+    close(FD)*/
+    return;
+}
  
 int main( int argc, char* argv[] ) 
 { 
@@ -77,9 +84,10 @@ int main( int argc, char* argv[] )
     struct sockaddr_in server_addr = { AF_INET, htons( SERVER_PORT ) }; 
     char buf[512]; 
     struct hostent *hp; 
-    pthread_mutex_t socket_mutex;
-
+    pthread_mutex_t buf_mutex;
     pthread_t *reader_id;
+   
+
     if( argc != 3 ) 
     { 
 	printf( "Usage: %s hostname nickname\n", argv[0] ); 
@@ -117,25 +125,36 @@ int main( int argc, char* argv[] )
     printf("Input a string:\n" );
 
     /* Start new thread for reading */
-    int reader_id = pthread_create(reader_id, NULL, (&reader));
+    int reader_id;
+ 
+    //reader_args.sd = sd;
+    //reader_args.buf = buf;
+    //reader_args.buf_mutex = buf_mutex;
+
+    /*if (reader_id = pthread_create(reader_id, NULL, (&reader), reader_args) != 0) {
+        printf("Could not create thread\n");
+        exit(1);
+    }*/
  
 
     while( gets(&buf) != EOF) 
     { 
+        pthread_mutex_lock(buf_mutex);
+        write(sd, buf, sizeof(buf));
         if (strncmp(buf, "/part", sizeof(char) * 5) == 0 ||
             strncmp(buf, "/quit", sizeof(char) * 5) == 0 || 
             strncmp(buf, "/exit", sizeof(char) * 5) == 0) {
 
             break;
         }
+        pthread_mutex_unlock(buf_mutex);
 
-        write(sd, buf, sizeof(buf));
-        read(sd, buf, sizeof(buf)); 
-        printf("SERVER ECHOED: %s\n", buf); 
+        //read(sd, buf, sizeof(buf)); 
+        //printf("SERVER ECHOED: %s\n", buf); 
     } 
     
- 
-    pthread_tkill(ppid, tid, int 
+    pthread_mutex_unlock(buf_mutex);
+    pthread_cancel(reader_id);
  
     close(sd); 
     return(0); 
