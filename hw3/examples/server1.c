@@ -74,7 +74,7 @@ int main()
     /* data transfer on connected socket ns */
     while( (k = read(ns, buf, sizeof(buf))) != 0)
     {    printf("SERVER RECEIVED: %s\n", buf);
-         write(ns, buf, k);
+         //write(ns, buf, k);
     }
     close(ns);
     close(sd);
