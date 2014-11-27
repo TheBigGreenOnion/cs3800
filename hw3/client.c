@@ -1,41 +1,5 @@
-/*********************************************************************************/
-/*   PROGRAM: client-template for the assignment                                */
-/*                                                                                                              */
-/*   Client creates a socket to connect to Server.                                     */
-/*   When the communication established, Client writes data to server   */
-/*   and echoes the response from Server.                                              */
-/*                                                                                                              */
-/*   gcc -o client client.c -lpthread -D_REENTRANT                                */
-/*                                                                                                              */
-/*********************************************************************************/
-/*
-
-int main()
-{
-  socket stuff (including gethostbyname(), bcopy(), socket())
-
-  connect
-  
-  introduce the client to server by passing the nickname;
-
-  read the echoed message;
-
-  c)reate a ehread for reading messages;
-
-  while(still input to keyboard)
-  {
-    write input to socket
-  }
-
-  close stuff ...
-}
-
-
-
-*/
- 
 /************************************************************************/ 
-/*   PROGRAM NAME: client.c  (works with serverX.c)                     */ 
+/*   PROGRAM NAME: client.c                                             */ 
 /*                                                                      */ 
 /*   Client creates a socket to connect to Server.                      */ 
 /*   When the communication established, Client writes data to server   */ 
@@ -45,7 +9,7 @@ int main()
 /*   on a server machine. Then run the client program on another        */ 
 /*   machine.                                                           */ 
 /*                                                                      */ 
-/*   COMPILE:    gcc -o client client.c -lnsl                           */ 
+/*   gcc -o client client.c -lpthread -D_REENTRANT                      */
 /*   TO RUN:     client  server-machine-name                            */ 
 /*                                                                      */ 
 /************************************************************************/ 
@@ -64,12 +28,11 @@ int main()
 typedef struct args args;
 struct args {
     int sd;
-    pthread_mutex_t *socket_mutex;
 };
 
 void handle_int(int sig)
 {
-    printf("Use /exit, /part, or /quit instead of Ctrl-C to quit.\n");
+    printf("\nUse /exit, /part, or /quit instead of Ctrl-C to quit.\n");
     return;
 }
 
@@ -80,7 +43,6 @@ void* reader(void* arg)
 
     char read_buf[512];
     int sd = read_args->sd;
-    pthread_mutex_t *socket_mutex = read_args->socket_mutex;
 
     while (read(sd, read_buf, sizeof(read_buf)) > 0)
     {
@@ -99,8 +61,6 @@ int main( int argc, char* argv[] )
     char buf[512];
     char *index;
     struct hostent *hp; 
-    pthread_mutex_t socket_mutex;
-    pthread_mutex_init(&socket_mutex, NULL);
     pthread_t reader_id;
     struct args reader_args;  
 
@@ -145,7 +105,6 @@ int main( int argc, char* argv[] )
     /* Start new thread for reading */
  
     reader_args.sd = sd;
-    reader_args.socket_mutex = &socket_mutex;
 
     if (pthread_create(&reader_id, NULL, (&reader), &reader_args) != 0) {
         printf("Could not create reader thread\n");
