@@ -75,6 +75,7 @@ int main()
     while( (k = read(ns, buf, sizeof(buf))) != 0)
     {    printf("SERVER RECEIVED: %s\n", buf);
          //write(ns, buf, k);
+         shutdown(ns, SHUT_WR);
     }
     close(ns);
     close(sd);
