@@ -59,12 +59,33 @@ void bob(void* arg)
 #include <sys/socket.h>  /* define socket */
 #include <netinet/in.h>  /* define internet socket */
 #include <netdb.h>       /* define internet socket */
+#include <pthread.h>
 
 #define SERVER_PORT 9999        /* define a server port number */
 #define MAX_CLIENT 10
 
-int clients[MAX_CLIENT];  
-char global_buf[512];
+int client_fds[MAX_CLIENT];  
+pthread_t client_threads[MAX_CLIENT];
+int broadcast_filter[MAX_CLIENT];
+
+typedef struct args args;
+struct args {
+    int ns;
+    pthread_mutex_t *m;
+    char *buf[512];
+    int *client_fds[MAX_CLIENT];
+};
+
+args connection_args[MAX_CLIENT];
+
+void *connection_thread(void *arg) 
+{
+    args *connection_args;
+    connection_args = arg;
+    
+
+    return;
+}
 
 int main()
 {
@@ -74,45 +95,41 @@ int main()
     int client_len = sizeof( client_addr );
     int client_id;
     char buf[512], *host;
+
+    pthread_mutex_t lock;
+    pthread_mutex_init(&lock, NULL);
     
+    // Initialize clients for sanity checks later
     for (j=0;j<MAX_CLIENT;j++) {
-        clients[j] = -1;
+        client_fds[j] = -1;
     }
 
     /* create a stream socket */
     if( ( sd = socket( AF_INET, SOCK_STREAM, 0 ) ) == -1 )
     {
-    perror( "server: socket failed" );
-    //exit( 1 );
+        perror( "server: socket failed" );
+        exit( 1 );
     }
     
     /* bind the socket to an internet port */
     if( bind(sd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1 )
     {
-    perror( "server: bind failed" );
-    //exit( 1 );
+        perror( "server: bind failed" );
+        exit( 1 );
     }
 
-    while(1)
+   /* listen for clients */
+    if( listen( sd, 1 ) == -1 )
     {
-
-        /* listen for clients */
-        if( listen( sd, 1 ) == -1 )
-        {
         perror( "server: listen failed" );
-        //exit( 1 );
-        }
+        exit( 1 );
+    }
 
-        if( ( ns = accept( sd, (struct sockaddr*)&client_addr,
-                           &client_len ) ) == -1 )
-        {
-            perror( "server: accept failed" );
-            //exit( 1 );
-        }
-
+    while((ns = accept( sd, (struct sockaddr*)&client_addr, &client_len ) ) > 0 ) {
+        pthread_mutex_lock(&lock);
         client_id = -1;
         for (j=0;j<MAX_CLIENT;j++) {
-            if (clients[j] < 0) {
+            if (client_fds[j] < 0) {
                 //valid
                 client_id = j;
                 break;
@@ -126,16 +143,24 @@ int main()
         }
 
         // Add client to list and spawn thread
-        clients[client_id] = ns;
-        //pthread_create() derpderp
+        client_fds[client_id] = ns;
+        pthread_mutex_unlock(&lock);
+        connection_args[client_id].ns=ns;
+        connection_args[client_id].m=&lock;
+        connection_args[client_id].buf[0]=&buf[0];
+        connection_args[client_id].client_fds[0]=&client_fds[0]; 
+
+        if (pthread_create(&client_threads[client_id], NULL, &connection_thread, &connection_args[client_id]) != 0) {
+        }
         printf("Client %d connected to the server.\n", client_id);
+
     }
 
 
     while(1) {
-        sleep(0.1);
+        sleep(1);
     }
-    /*
+    
 
     /* data transfer on connected socket ns 
     while( (k = read(ns, buf, sizeof(buf))) != 0)
