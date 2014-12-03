@@ -46,8 +46,7 @@ void* reader(void* arg)
 
     while (read(sd, read_buf, sizeof(read_buf)) > 0)
     {
-        printf("%s\n", read_buf);  
-        
+        printf("%s\n", read_buf);          
     }
 
     return;
@@ -99,6 +98,7 @@ int main( int argc, char* argv[] )
     /* Upon successful connect, give nickname */ 
     printf("connect() successful! will send a message to server\n"); 
     strcpy(buf, argv[2]);
+    puts(buf);
     write(sd, buf, BUFSIZE);
     printf("Input a string:\n" );
 
@@ -120,18 +120,25 @@ int main( int argc, char* argv[] )
             *index = '\0';
         }
 
+        
+        if (buf[0] != '\0') {
+            write(sd, buf, BUFSIZE);
+        }
+
         if (strncmp(buf, "/part", sizeof(char) * 5) == 0 ||
             strncmp(buf, "/quit", sizeof(char) * 5) == 0 || 
             strncmp(buf, "/exit", sizeof(char) * 5) == 0) {
-
-            break;
-        }
-        else if (buf[0] != '\0') {
-            write(sd, buf, BUFSIZE);
+    
+            strcpy(buf, "/exit\0");
+            break; 
         }
     } 
 
     pthread_cancel(reader_id);
+
+    read(sd, buf, sizeof(buf));
+    puts(buf);
+
     close(sd); 
     return(0); 
 }

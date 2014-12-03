@@ -72,18 +72,57 @@ typedef struct args args;
 struct args {
     int ns;
     pthread_mutex_t *m;
-    char *buf[512];
-    int *client_fds[MAX_CLIENT];
+    //char *buf[512];
+    int (*client_fds)[MAX_CLIENT];
 };
 
 args connection_args[MAX_CLIENT];
 
 void *connection_thread(void *arg) 
 {
+    int k;
+    int fd;
+    int (*fds)[MAX_CLIENT];
+    char buf[512];
+    char nick[32];
     args *connection_args;
     connection_args = arg;
-    
 
+    // read nickname
+    read(connection_args->ns, nick, sizeof(nick));
+    nick[31] = '\0';
+
+    printf("NICK: %s from %d\n", nick, connection_args->ns);
+    while (read(connection_args->ns, buf, sizeof(buf)) > 0)
+    {
+        printf("READ: %x\n", buf);
+
+        pthread_mutex_lock(connection_args->m);
+
+        if (strncmp(buf, "/exit", sizeof(char) * 5) == 0) {
+            printf("DERP");
+            break;
+        }
+
+        fds = connection_args->client_fds[0];
+        for (k=0;k<MAX_CLIENT;k++) {
+            fd = (*fds)[k];
+            printf("FD: %d\n", fd);
+            if (fd > 0 && fd != connection_args->ns) {
+                //non-fd or own
+                write(fd, buf, sizeof(buf)); 
+            }
+        }
+        pthread_mutex_unlock(connection_args->m);
+        //usleep(1);
+    }
+
+    pthread_mutex_lock(connection_args->m);
+    //remove from fdlist
+
+    pthread_mutex_unlock(connection_args->m);
+
+    // on exit
     return;
 }
 
@@ -126,15 +165,18 @@ int main()
     }
 
     while((ns = accept( sd, (struct sockaddr*)&client_addr, &client_len ) ) > 0 ) {
+        printf("STILL GOING!");
+
         pthread_mutex_lock(&lock);
         client_id = -1;
         for (j=0;j<MAX_CLIENT;j++) {
-            if (client_fds[j] < 0) {
+            if (client_fds[j] <= 0) {
                 //valid
                 client_id = j;
                 break;
             }
         }
+
         if (client_id == -1) {
             perror("server: No client slots available");
             strcpy(buf, "Max clients reached on server.\nDisconnecting\0");
@@ -142,25 +184,23 @@ int main()
             close(ns);
         }
 
+
         // Add client to list and spawn thread
         client_fds[client_id] = ns;
         pthread_mutex_unlock(&lock);
+
         connection_args[client_id].ns=ns;
         connection_args[client_id].m=&lock;
-        connection_args[client_id].buf[0]=&buf[0];
-        connection_args[client_id].client_fds[0]=&client_fds[0]; 
+        //connection_args[client_id].buf=&buf;
+        connection_args[client_id].client_fds=&client_fds; 
 
         if (pthread_create(&client_threads[client_id], NULL, &connection_thread, &connection_args[client_id]) != 0) {
+            printf("WHAT JUST HAPPENED YO?\n");
         }
-        printf("Client %d connected to the server.\n", client_id);
-
+        printf("Client %d connected to the server. with fd %d\n", client_id, ns);
+        //usleep(1);
     }
 
-
-    while(1) {
-        sleep(1);
-    }
-    
 
     /* data transfer on connected socket ns 
     while( (k = read(ns, buf, sizeof(buf))) != 0)
