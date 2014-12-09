@@ -29,6 +29,7 @@ typedef struct args args;
 struct args {
     int sd;
 };
+int is_running =1;
 
 void handle_int(int sig)
 {
@@ -42,11 +43,18 @@ void* reader(void* arg)
     read_args = arg;
 
     char read_buf[512];
+    char nick[16];
     int sd = read_args->sd;
 
-    while (read(sd, read_buf, sizeof(read_buf)) > 0)
-    {
-        printf("%s\n", read_buf);          
+    while (read(sd, nick, sizeof(nick)) > 0)
+    {   
+        read(sd, read_buf, sizeof(read_buf));
+
+        if ((strncmp(read_buf, "/exit", 5) == 0)) {
+            is_running = 0;
+            break;
+        }
+        printf("%s: %s\n", nick, read_buf);          
     }
 
     return;
@@ -54,10 +62,10 @@ void* reader(void* arg)
  
 int main( int argc, char* argv[] ) 
 { 
-    int sd; 
-    int BUFSIZE = 512 * sizeof(char);
+    int sd;
     struct sockaddr_in server_addr = { AF_INET, htons( SERVER_PORT ) }; 
-    char buf[512];
+    char buf[512] = "\0";
+    int BUFSIZE = sizeof(buf);
     char *index;
     struct hostent *hp; 
     pthread_t reader_id;
@@ -96,11 +104,8 @@ int main( int argc, char* argv[] )
     } 
 
     /* Upon successful connect, give nickname */ 
-    printf("connect() successful! will send a message to server\n"); 
     strcpy(buf, argv[2]);
-    puts(buf);
     write(sd, buf, BUFSIZE);
-    printf("Input a string:\n" );
 
     /* Start new thread for reading */
  
@@ -111,34 +116,42 @@ int main( int argc, char* argv[] )
         exit(1);
     }
 
-    while( fgets(buf, BUFSIZE, stdin) != NULL) 
-    { 
-        if ((index = strchr(buf, '\n')) == NULL) {
-            buf[0] = '\0';
-        } 
-        else {
-            *index = '\0';
-        }
+    while (is_running == 1) {
+        if ((fgets(buf, BUFSIZE, stdin) != NULL)) 
+        { 
 
+            if ((index = strchr(buf, '\n')) == NULL) {
+                buf[0] = '\0';
+            } 
+            else {
+                *index = '\0';
+            }
+
+            
+            if (buf[0] != '\0') {
+                write(sd, buf, BUFSIZE);
+            }
+
+            if (strncmp(buf, "/part", 5) == 0 ||
+                strncmp(buf, "/quit", 5) == 0 || 
+                strncmp(buf, "/exit", 5) == 0) {
         
-        if (buf[0] != '\0') {
-            write(sd, buf, BUFSIZE);
-        }
+                strcpy(buf, "/exit");
+                write(sd, buf, sizeof(buf));
 
-        if (strncmp(buf, "/part", sizeof(char) * 5) == 0 ||
-            strncmp(buf, "/quit", sizeof(char) * 5) == 0 || 
-            strncmp(buf, "/exit", sizeof(char) * 5) == 0) {
-    
-            strcpy(buf, "/exit\0");
-            break; 
-        }
-    } 
+                is_running = 0;
+                close(sd);
+                break;
+            }
+            if (is_running == 0)
+                break;
 
-    pthread_cancel(reader_id);
+        } 
+    }
 
-    read(sd, buf, sizeof(buf));
-    puts(buf);
+    printf("Disconnected. Enter /quit to exit\n");
 
     close(sd); 
+    exit(0);
     return(0); 
 }

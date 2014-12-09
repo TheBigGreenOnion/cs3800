@@ -1,5 +1,7 @@
 /****************************************************************
-*   PROGRAM: server-template for the assignment                                         
+*   PROGRAM: Assignment 3                                         
+*       Robert Higgins
+        William Dodds
 *                                                                                       
 *   Using socket() to create an endpoint for communication. It returns socket descriptor 
 *   Using bind() to bind/assign a name to an unnamed socket.                            
@@ -9,50 +11,6 @@
 *   gcc -o server server.c -lpthread -D_REENTRANT                                   
 *                                                                                  
 *****************************************************************/
-//int counter; mutex m;
-/*int main(int argc, char *argv[]);
-{
-   socket
-   bind
-
-   listen(n)  
-              
-
-   while(( someint = accept(socket)) > 0)
-   {  
-      lock(m);
-      FD[counter++] = someint;
-      unlock(m);
-      thr_create(bob, someint, ....)  
-   }
-
-   close stuff ...
-
-}
-
-void bob(void* arg)    
-{
-   get  fd;
-
-   get the host name;
-   read in client name;
-   print a message about the new client;
-
-   while ((read(FD, buf)) > 0)
-   {
-      lock(m)
-      loop
-        write message to each FD
-      unlock(m)          
-   }
-  
-   lock(m);
-   remove myself from FDarray
-   unlock(m) 
-   close(FD)
-   thr_exit()
-}*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -60,13 +18,19 @@ void bob(void* arg)
 #include <netinet/in.h>  /* define internet socket */
 #include <netdb.h>       /* define internet socket */
 #include <pthread.h>
+#include <signal.h>
 
 #define SERVER_PORT 9999        /* define a server port number */
 #define MAX_CLIENT 10
 
 int client_fds[MAX_CLIENT];  
+int ns;
+struct sockaddr_in *server_ptr;
+
+int is_running = 1;
 pthread_t client_threads[MAX_CLIENT];
-int broadcast_filter[MAX_CLIENT];
+char goodbye[512] = "Disconnected by server\0";
+char part[512] = "/exit\0";
 
 typedef struct args args;
 struct args {
@@ -78,47 +42,100 @@ struct args {
 
 args connection_args[MAX_CLIENT];
 
+
+void write_all(int from, int (*clients)[MAX_CLIENT], char nick[16], char (*msg)[512])
+{
+    int k = 0;
+    for (k=0;k<MAX_CLIENT;k++) {
+        if ((*clients)[k] != from && (*clients)[k] > 0) {
+            write((*clients)[k], nick, sizeof(nick));
+            write((*clients)[k], *msg, sizeof(*msg));
+        }
+    }
+    return;
+}
+
+void interrupt_threads(int sig)
+{
+    int j=0;
+    is_running = 0;
+    pthread_mutex_lock(connection_args->m); 
+    write_all(-1, &client_fds, "SERVER", &goodbye);
+    write_all(-1, &client_fds, "SERVER", &part);
+    for (j=0;j<MAX_CLIENT;j++) {
+        close(client_fds[j]);
+    }
+    pthread_mutex_unlock(connection_args->m); 
+
+    printf("\nSERVER SHUTTING DOWN IN 10s!\n");
+
+
+    sleep(10);
+
+
+    exit(1);
+    return;
+}
+
 void *connection_thread(void *arg) 
 {
     int k;
-    int fd;
+    int from;
     int (*fds)[MAX_CLIENT];
     char buf[512];
-    char nick[32];
+    char nick[16];
     args *connection_args;
     connection_args = arg;
 
-    // read nickname
-    read(connection_args->ns, nick, sizeof(nick));
-    nick[31] = '\0';
+    // read nickname then get rid of any extra garbage
+    read(connection_args->ns, buf, sizeof(buf)); 
+    from = connection_args->ns;
+    fds = connection_args->client_fds[0];
+    
+    strncpy(nick, buf, 15);
+    nick[15] = '\0';
+    strcpy(buf, nick);
+    strcat(buf, " connected to the server");
 
-    printf("NICK: %s from %d\n", nick, connection_args->ns);
-    while (read(connection_args->ns, buf, sizeof(buf)) > 0)
+    pthread_mutex_lock(connection_args->m);
+    write_all(from, fds, "SERVER", &buf); 
+    pthread_mutex_unlock(connection_args->m);
+
+    write(from, "SERVER\0", 16);
+    strcpy (buf, "Welcome!");
+    write(from, buf, sizeof(buf));
+
+    while ((is_running == 1) && (read(connection_args->ns, buf, sizeof(buf)) > 0))
     {
-        printf("READ: %x\n", buf);
-
         pthread_mutex_lock(connection_args->m);
 
-        if (strncmp(buf, "/exit", sizeof(char) * 5) == 0) {
-            printf("DERP");
+        if (strcmp(buf, "/exit") == 0) {
+            usleep(100);
+            write(from, "SERVER\0", 16);
+            strcpy(buf, "Goodbye!\0");
+            write(from, buf, sizeof(buf));
+            pthread_mutex_unlock(connection_args->m);
             break;
         }
 
-        fds = connection_args->client_fds[0];
-        for (k=0;k<MAX_CLIENT;k++) {
-            fd = (*fds)[k];
-            printf("FD: %d\n", fd);
-            if (fd > 0 && fd != connection_args->ns) {
-                //non-fd or own
-                write(fd, buf, sizeof(buf)); 
-            }
-        }
+        write_all(from, fds, nick, &buf); 
+
         pthread_mutex_unlock(connection_args->m);
-        //usleep(1);
     }
 
     pthread_mutex_lock(connection_args->m);
-    //remove from fdlist
+
+    strcpy(buf, nick);
+    strcat(buf, " has disconnected\0");
+    close(connection_args->ns);
+
+    strcpy(nick, "SERVER");
+    write_all(from, fds, nick, &buf); 
+    for (k=0;k<MAX_CLIENT;k++) {
+        if ((*fds)[k] == connection_args->ns) {
+            (*fds)[k] = -1;
+        }
+    }
 
     pthread_mutex_unlock(connection_args->m);
 
@@ -128,12 +145,16 @@ void *connection_thread(void *arg)
 
 int main()
 {
-    int sd, ns, k, pid, c, j;
+    int sd, k, pid, c, j;
     struct sockaddr_in server_addr = { AF_INET, htons( SERVER_PORT ) };
+    server_ptr = &server_addr;
     struct sockaddr_in client_addr = { AF_INET };
     int client_len = sizeof( client_addr );
     int client_id;
     char buf[512], *host;
+    char nick[16] = "SERVER";
+
+    signal(SIGINT, (interrupt_threads));
 
     pthread_mutex_t lock;
     pthread_mutex_init(&lock, NULL);
@@ -164,8 +185,7 @@ int main()
         exit( 1 );
     }
 
-    while((ns = accept( sd, (struct sockaddr*)&client_addr, &client_len ) ) > 0 ) {
-        printf("STILL GOING!");
+    while((((ns = accept( sd, (struct sockaddr*)&client_addr, &client_len ))) > 0) ) {
 
         pthread_mutex_lock(&lock);
         client_id = -1;
@@ -184,33 +204,26 @@ int main()
             close(ns);
         }
 
+        else {
+            // Add client to list and spawn thread
+            client_fds[client_id] = ns;
+            pthread_mutex_unlock(&lock);
 
-        // Add client to list and spawn thread
-        client_fds[client_id] = ns;
-        pthread_mutex_unlock(&lock);
+            connection_args[client_id].ns=ns;
+            connection_args[client_id].m=&lock;
+            connection_args[client_id].client_fds=&client_fds; 
 
-        connection_args[client_id].ns=ns;
-        connection_args[client_id].m=&lock;
-        //connection_args[client_id].buf=&buf;
-        connection_args[client_id].client_fds=&client_fds; 
+            if (pthread_create(&client_threads[client_id], NULL, &connection_thread, &connection_args[client_id]) != 0) {
+                printf("ERROR: COULD NOT CREATE THREAD\n");
+            }
 
-        if (pthread_create(&client_threads[client_id], NULL, &connection_thread, &connection_args[client_id]) != 0) {
-            printf("WHAT JUST HAPPENED YO?\n");
         }
-        printf("Client %d connected to the server. with fd %d\n", client_id, ns);
+        if (is_running == 0) {
+            break;
+        }
         //usleep(1);
     }
 
-
-    /* data transfer on connected socket ns 
-    while( (k = read(ns, buf, sizeof(buf))) != 0)
-    {    printf("SERVER(Child) RECEIVED: %s\n", buf);
-         write(ns, buf, k);
-    }
-    close(ns);
-    close(sd);
-
-    unlink(server_addr.sin_addr);
-*/
+    unlink(server_ptr->sin_addr);
     return(0);
 }
